@@ -23,7 +23,6 @@ def get_random_cars(
 ):
     headers = {"User-Agent": "Mozilla/5.0"}
 
-    # если передан кастомный линк — используем его
     if base_url:
         urls = [base_url]
     else:
@@ -63,14 +62,24 @@ def get_random_cars(
             location_tag = random_item.find("div", class_="listing-item__location")
             location_text = location_tag.text.strip() if location_tag else "Неизвестно"
 
-            params_tag = random_item.find("div", class_="listing-item__params")
-            params_text = params_tag.get_text(", ", strip=True) if params_tag else ""
-            params_text = re.sub(r"(,\s*){2,}", ", ", params_text).strip(", ")
+            # --- параметры из card__params ---
+            params_block = random_item.find("div", class_="listing-item__params")
+            params_text = params_block.get_text(", ", strip=True) if params_block else ""
+            params_text = clean_text(params_text)
+            parts = [p.strip() for p in params_text.split(",") if p.strip()]
 
-            # извлекаем описание из карточки или полной страницы
-            desc_tag = random_item.find("div", class_="listing-item__message")
-            description = desc_tag.text.strip() if desc_tag else ""
+            year = next((p for p in parts if re.match(r"\d{4}", p)), "—").replace("г.", "").strip()
+            mileage = next((p for p in parts if "км" in p), "—")
+            transmission = next((p for p in parts if any(t in p.lower() for t in ["механика", "автомат", "вариатор"])), "—")
 
+            # тип двигателя и объём
+            engine_info = "—"
+            engine_type = next((p for p in parts if any(x in p.lower() for x in ["бензин", "дизель", "электро", "гибрид", "газ"])), "")
+            engine_volume = next((p for p in parts if "л" in p and not "км" in p), "")
+            if engine_type or engine_volume:
+                engine_info = f"{engine_type}, {engine_volume}".strip(", ")
+
+            # --- вытаскиваем описание из объявления ---
             adv_soup = None
             try:
                 adv_resp = requests.get(link, headers=headers, timeout=10)
@@ -78,20 +87,21 @@ def get_random_cars(
             except requests.RequestException:
                 pass
 
-            # если краткого описания нет — пробуем из полной страницы
-            if not description and adv_soup:
-                desc_full = adv_soup.select_one(".card__comment p")
-                if desc_full:
-                    description = desc_full.text.strip()
+            description = "Нет описания"
+            if adv_soup:
+                desc_block = adv_soup.select_one(".card__comment p")
+                if desc_block:
+                    description = desc_block.text.strip()
 
-            if not description:
-                description = "Нет описания"
+            # --- привод из card__description ---
+            drive = "—"
+            if adv_soup:
+                desc_block = adv_soup.find("div", class_="card__description")
+                if desc_block:
+                    desc_text = clean_text(desc_block.get_text(" ", strip=True))
+                    drive = next((p for p in desc_text.split(",") if "привод" in p.lower()), "—").strip()
 
-            # --- модификация авто ---
-            mod_block = adv_soup.find("div", class_="card__modification") if adv_soup else None
-            mod_text = clean_text(mod_block.get_text(" ", strip=True)) if mod_block else "—"
-
-            # --- собираем фото ---
+            # --- фото ---
             photos = []
             if adv_soup:
                 gallery = adv_soup.select(".gallery__stage .gallery__frame img")
@@ -102,21 +112,13 @@ def get_random_cars(
                     if len(photos) >= max_photos:
                         break
 
-            # --- форматирование полей ---
-            parts = [p.strip() for p in params_text.split(",") if p.strip()]
-            year = next((p for p in parts if re.match(r"\d{4}", p)), "—").replace("г.", "").strip()
-            engine = next((p for p in parts if "л" in p), "—")
-            fuel = next((p for p in parts if any(f in p.lower() for f in ["бензин", "дизель", "газ"])), "—")
-            transmission = next((p for p in parts if any(t in p.lower() for t in ["механика", "автомат"])), "—")
-            mileage = next((p for p in parts if "км" in p), "—")
-
             formatted_message = (
                 f"🚗 {title}  📅 {year}\n"
-                f"🛣 {mileage}  |⛽️ {fuel.title()}, {engine}\n"
-                f"📦 {transmission.title()} |⚙️ {mod_text}\n"
+                f"🛣 {mileage}  |⛽️ {engine_info}\n"
+                f"📦 {transmission.title()} |⚙️ {drive}\n"
                 f"📍 {location_text}\n"
                 f"💰 {price_text}\n\n"
-                f"{description.strip()}\n\n"
+                f"{description}\n\n"
             )
 
             results.append({
@@ -127,7 +129,8 @@ def get_random_cars(
                 "description": description,
                 "link": link,
                 "photos": photos,
-                "modification": mod_text,
+                "drive": drive,
+                "engine_info": engine_info,
                 "message": formatted_message
             })
 
@@ -138,6 +141,7 @@ def get_random_cars(
 
     return []
 
+
 def clean_text(text: str) -> str:
     """Убирает лишние пробелы, двойные запятые и неразрывные пробелы."""
     if not text:
@@ -145,68 +149,80 @@ def clean_text(text: str) -> str:
     text = text.replace("\xa0", " ").replace(" ", " ")
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"(,\s*){2,}", ", ", text)
-    text = text.strip(",. \n\t")
-    return text.strip()
-
+    return text.strip(",. \n\t")
 
 def parse_single_car(url, max_photos=10):
     headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=10)
     if response.status_code != 200:
         return None
 
     soup = BeautifulSoup(response.text, "html.parser")
 
-    # 🏷 Заголовок — убираем слово "Продажа"
+    # 🏷 Заголовок
     title_block = soup.find("h1")
-    title = clean_text(title_block.text) if title_block else "Без названия"
-    title = re.sub(r"(?i)^Продажа\s+", "", title).strip()  # убираем "Продажа" в начале
+    title = clean_text2(title_block.text) if title_block else "Без названия"
+    title = re.sub(r"(?i)^Продажа\s+", "", title).strip()
 
-    # 🧩 Основные параметры
+    # 🧩 Основные параметры (год, трансмиссия, объём, топливо, пробег)
     params_block = soup.find("div", class_="card__params")
-    params_text = clean_text(params_block.get_text(" ", strip=True)) if params_block else ""
-    parts = [p.strip() for p in re.split(r"[,\|]", params_text) if p.strip()]
+    params_text = clean_text2(params_block.get_text(", ", strip=True)) if params_block else ""
+    params_text = params_text.replace("\xa0", " ").replace(" ", " ")
+    parts = [p.strip() for p in params_text.split(",") if p.strip()]
 
     year = gearbox = engine = fuel = mileage = "—"
-    for p in parts:
-        if re.search(r"\d{4}\s*г", p):
-            year = clean_text(p.replace("г.", "").replace("г", ""))
-        elif any(x in p.lower() for x in ["механика", "автомат", "вариатор"]):
-            gearbox = clean_text(p)
-        elif re.search(r"\d+[,\.]?\d*\s*л", p):
-            engine = clean_text(p)
-        elif any(x in p.lower() for x in ["бензин", "дизель", "газ", "электро"]):
-            fuel = clean_text(p)
-        elif "км" in p:
-            mileage = clean_text(p)
 
-    # 🚗 Кузов / привод / цвет
+    for p in parts:
+        p_low = p.lower()
+        # Год
+        if re.search(r"\d{4}\s*г", p_low):
+            year = p.replace("г.", "").replace("г", "").strip()
+        # Коробка передач
+        elif any(x in p_low for x in ["механика", "автомат", "вариатор"]):
+            gearbox = p
+        # Объём двигателя
+        elif re.search(r"(\d+[.,]?\d*)\s*л", p_low):
+            engine_match = re.search(r"(\d+[.,]?\d*)\s*л", p_low)
+            if engine_match:
+                engine_val = engine_match.group(1).replace(",", ".")
+                engine = f"{engine_val} л"
+        # Тип топлива
+        elif any(x in p_low for x in ["бензин", "дизель", "газ", "электро", "гибрид"]):
+            fuel = p
+        # Пробег
+        elif "км" in p_low:
+            mileage = p
+
+    # 🚗 Кузов, привод, цвет
     desc_block = soup.find("div", class_="card__description")
-    desc_text = clean_text(desc_block.get_text(", ", strip=True)) if desc_block else "—"
+    desc_text = clean_text2(desc_block.get_text(", ", strip=True)) if desc_block else "—"
+    drive = next((p.strip() for p in desc_text.split(",") if "привод" in p.lower()), "—")
 
     # ⚙️ Модификация
     mod_block = soup.find("div", class_="card__modification")
-    mod_text = clean_text(mod_block.get_text(" ", strip=True)) if mod_block else "—"
+    mod_text = clean_text2(mod_block.get_text(" ", strip=True)) if mod_block else "—"
+    if "Все параметры" in mod_text:
+        mod_text = mod_text.replace("Все параметры", "").strip(",. ")
 
     # 📍 Локация
     loc_block = soup.find("div", class_="card__location")
-    location = clean_text(loc_block.text) if loc_block else "Неизвестно"
+    location = clean_text2(loc_block.text) if loc_block else "Неизвестно"
 
     # 💰 Цена
     price_block = soup.find("div", class_="card__price-primary")
-    price = clean_text(price_block.text) if price_block else "—"
+    price = clean_text2(price_block.text) if price_block else "—"
 
-    # 📝 Описание — убираем "Описание" в начале
+    # 📝 Описание
     comment_block = soup.find("div", class_="card__comment")
     if comment_block:
-        description = clean_text(comment_block.text)
+        description = clean_text2(comment_block.text)
         description = re.sub(r"(?i)^Описание", "", description).strip()
     else:
         description = "Нет описания"
 
     # 🖼 Фото
-    gallery = soup.select(".gallery__stage .gallery__frame img")
     photos = []
+    gallery = soup.select(".gallery__stage .gallery__frame img")
     for img in gallery:
         src = img.get("data-src") or img.get("src")
         if src and not src.startswith("data:image"):
@@ -214,18 +230,31 @@ def parse_single_car(url, max_photos=10):
         if len(photos) >= max_photos:
             break
 
+    # 🛠 Собираем тип и объём двигателя в одну строку
+    engine_info = "—"
+    if fuel != "—" or engine != "—":
+        engine_info = f"{fuel}, {engine}".strip(", ")
+
     return {
         "title": title,
         "year": year,
-        "gearbox": gearbox,
-        "engine": engine,
-        "fuel": fuel,
         "mileage": mileage,
-        "desc_text": desc_text,
-        "mod_text": mod_text,
-        "price": price,
+        "gearbox": gearbox,
+        "drive": drive,
+        "engine_info": engine_info,
         "location": location,
+        "price": price,
         "description": description,
         "photos": photos,
         "link": url,
     }
+
+
+def clean_text2(text: str) -> str:
+    """Убирает мусорные пробелы, неразрывные пробелы и двойные запятые"""
+    if not text:
+        return ""
+    text = text.replace("\xa0", " ").replace(" ", " ")
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"(,\s*){2,}", ", ", text)
+    return text.strip(",. \n\t")
