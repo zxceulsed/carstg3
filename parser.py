@@ -152,6 +152,10 @@ def clean_text(text: str) -> str:
     return text.strip(",. \n\t")
 
 def parse_single_car(url, max_photos=10):
+    import re
+    import requests
+    from bs4 import BeautifulSoup
+
     headers = {"User-Agent": "Mozilla/5.0"}
     response = requests.get(url, headers=headers, timeout=10)
     if response.status_code != 200:
@@ -163,33 +167,35 @@ def parse_single_car(url, max_photos=10):
     title_block = soup.find("h1")
     title = clean_text2(title_block.text) if title_block else "Без названия"
     title = re.sub(r"(?i)^Продажа\s+", "", title).strip()
+    title = re.sub(r",?\s*\d{4}\s*г.*$", "", title)
+    title = re.sub(r"\s+в\s+[A-ЯЁA-Z][а-яёa-z]+.*$", "", title)
+    title = title.strip(",. ")
 
     # 🧩 Основные параметры (год, трансмиссия, объём, топливо, пробег)
     params_block = soup.find("div", class_="card__params")
-    params_text = clean_text2(params_block.get_text(", ", strip=True)) if params_block else ""
-    params_text = params_text.replace("\xa0", " ").replace(" ", " ")
-    parts = [p.strip() for p in params_text.split(",") if p.strip()]
+    params_text = clean_text2(params_block.get_text(" ", strip=True)) if params_block else ""
 
     year = gearbox = engine = fuel = mileage = "—"
 
+    # Извлекаем объём двигателя до разделения
+    m = re.search(r"(\d+[.,]?\d*)\s*л", params_text.lower())
+    if m:
+        engine = m.group(1).replace(",", ".") + " л"
+
+    # Теперь разбиваем остальные параметры по запятым
+    parts = [p.strip() for p in params_text.split(",") if p.strip()]
     for p in parts:
         p_low = p.lower()
-        # Год
+
         if re.search(r"\d{4}\s*г", p_low):
             year = p.replace("г.", "").replace("г", "").strip()
-        # Коробка передач
+
         elif any(x in p_low for x in ["механика", "автомат", "вариатор"]):
             gearbox = p
-        # Объём двигателя
-        elif re.search(r"(\d+[.,]?\d*)\s*л", p_low):
-            engine_match = re.search(r"(\d+[.,]?\d*)\s*л", p_low)
-            if engine_match:
-                engine_val = engine_match.group(1).replace(",", ".")
-                engine = f"{engine_val} л"
-        # Тип топлива
+
         elif any(x in p_low for x in ["бензин", "дизель", "газ", "электро", "гибрид"]):
             fuel = p
-        # Пробег
+
         elif "км" in p_low:
             mileage = p
 
@@ -220,6 +226,10 @@ def parse_single_car(url, max_photos=10):
     else:
         description = "Нет описания"
 
+    MAX_TG_CAPTION = 900
+    if len(description) > MAX_TG_CAPTION:
+        description = description[:MAX_TG_CAPTION - 3].rsplit(" ", 1)[0] + "..."
+
     # 🖼 Фото
     photos = []
     gallery = soup.select(".gallery__stage .gallery__frame img")
@@ -230,7 +240,7 @@ def parse_single_car(url, max_photos=10):
         if len(photos) >= max_photos:
             break
 
-    # 🛠 Собираем тип и объём двигателя в одну строку
+    # 🛠 Объединяем тип и объём двигателя
     engine_info = "—"
     if fuel != "—" or engine != "—":
         engine_info = f"{fuel}, {engine}".strip(", ")
@@ -252,9 +262,14 @@ def parse_single_car(url, max_photos=10):
 
 def clean_text2(text: str) -> str:
     """Убирает мусорные пробелы, неразрывные пробелы и двойные запятые"""
+    import re
     if not text:
         return ""
     text = text.replace("\xa0", " ").replace(" ", " ")
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"(,\s*){2,}", ", ", text)
     return text.strip(",. \n\t")
+
+
+
+
