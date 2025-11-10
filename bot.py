@@ -19,7 +19,7 @@ dp = Dispatcher()
 moscow_tz = pytz.timezone("Europe/Moscow")
 scheduler = AsyncIOScheduler(timezone=moscow_tz)
 
-time_send = ["11:06","13:00","15:00","18:00","21:00"]
+time_send = ["10:00","13:00","15:00","18:00","21:00"]
 
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from parser import get_random_cars, parse_single_car
