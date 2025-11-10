@@ -70,7 +70,7 @@ def get_random_cars(
 
             year = next((p for p in parts if re.match(r"\d{4}", p)), "—").replace("г.", "").strip()
             mileage = next((p for p in parts if "км" in p), "—")
-            transmission = next((p for p in parts if any(t in p.lower() for t in ["механика", "автомат", "вариатор"])), "—")
+            transmission = next((p for p in parts if any(t in p.lower() for t in ["механика", "автомат", "вариатор", "робот"])), "—")
 
             # тип двигателя и объём
             engine_info = "—"
@@ -143,11 +143,16 @@ def get_random_cars(
 
 
 def clean_text(text: str) -> str:
-    """Убирает лишние пробелы, двойные запятые и неразрывные пробелы."""
+    """Очищает текст и заменяет неразрывные пробелы, пробелы и запятые в числах."""
     if not text:
         return ""
+    # заменяем неразрывные пробелы и узкие пробелы
     text = text.replace("\xa0", " ").replace(" ", " ")
+    # заменяем запятые в числах на точки (например, 1,8 → 1.8)
+    text = re.sub(r"(\d),(\d)", r"\1.\2", text)
+    # убираем лишние пробелы
     text = re.sub(r"\s+", " ", text)
+    # убираем двойные запятые
     text = re.sub(r"(,\s*){2,}", ", ", text)
     return text.strip(",. \n\t")
 
@@ -190,7 +195,7 @@ def parse_single_car(url, max_photos=10):
         if re.search(r"\d{4}\s*г", p_low):
             year = p.replace("г.", "").replace("г", "").strip()
 
-        elif any(x in p_low for x in ["механика", "автомат", "вариатор"]):
+        elif any(x in p_low for x in ["механика", "автомат", "вариатор", "робот"]):
             gearbox = p
 
         elif any(x in p_low for x in ["бензин", "дизель", "газ", "электро", "гибрид"]):
