@@ -89,9 +89,10 @@ def get_random_cars(
 
             description = "Нет описания"
             if adv_soup:
-                desc_block = adv_soup.select_one(".card__comment p")
-                if desc_block:
-                    description = desc_block.text.strip()
+                comment_block = adv_soup.find("div", class_="card__comment")
+                if comment_block:
+                    # Берём весь текст блока, а не только первый <p>
+                    description = clean_text(comment_block.get_text(" ", strip=True))
 
             # --- привод из card__description ---
             drive = "—"
@@ -226,7 +227,8 @@ def parse_single_car(url, max_photos=10):
     # 📝 Описание
     comment_block = soup.find("div", class_="card__comment")
     if comment_block:
-        description = clean_text2(comment_block.text)
+        # добавляем разделитель " " между строками
+        description = clean_text2(comment_block.get_text(" ", strip=True))
         description = re.sub(r"(?i)^Описание", "", description).strip()
     else:
         description = "Нет описания"
