@@ -221,8 +221,8 @@ def parse_single_car(url, max_photos=10):
     location = clean_text2(loc_block.text) if loc_block else "Неизвестно"
 
     # 💰 Цена
-    price_block = soup.find("div", class_="card__price-primary")
-    price = clean_text2(price_block.text) if price_block else "—"
+    price_block = soup.find("div", class_="card__price-secondary")
+    price = price_block.text.strip().replace("≈", "").replace(" ", "") if price_block else "—"
 
     # 📝 Описание
     comment_block = soup.find("div", class_="card__comment")
