@@ -43,8 +43,6 @@ async def ask_link(message: types.Message):
 async def handle_link(message: types.Message):
     
     car = parse_single_car(message.text)
-        if car is None:
-            return "error"
     print("DEBUG CAR =", car)
     print("Type =", type(car))
     caption = format_post(car)
@@ -150,6 +148,8 @@ async def send_ad():
     print("❌ Не удалось отправить объявление после нескольких попыток.")
 
 def format_post(car):
+    if car is None:
+        return "error"
     return f"""
 🚗 {car['title']}  📅 {car['year']}
 🛣 {car['mileage']}  |⛽️ {car['engine_info']}
