@@ -12,8 +12,8 @@ import re
 import requests
 
 
-TOKEN = "6374810081:AAG2YazUJqWkPJp8vZw4cwfirodwAj2W6WY"
-CHAT_ID = 823388511
+TOKEN = "8572062250:AAFLkHQQPPCP8AlSWq5UR5LWRR2aOWopUtg"
+CHAT_ID = -1003156926197
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
