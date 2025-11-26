@@ -9,6 +9,8 @@ import pytz
 import logging
 from aiogram.exceptions import TelegramBadRequest
 import re
+import requests
+
 
 TOKEN = "6374810081:AAG2YazUJqWkPJp8vZw4cwfirodwAj2W6WY"
 CHAT_ID = 823388511
@@ -146,6 +148,17 @@ async def send_ad():
             continue
 
     print("❌ Не удалось отправить объявление после нескольких попыток.")
+
+@dp.message(Command("ping"))
+async def set_link_command(message: types.Message):
+    try:
+        r = requests.get("https://av.by/", timeout=5)
+        if r.status_code == 200:
+            await message.answer("✅ av.by доступен")
+        else:
+            await message.answer(f"⚠️ Статус: {r.status_code}")
+    except Exception:
+        await message.answer("❌ av.by недоступен")
 
 def format_post(car):
     if car is None:
