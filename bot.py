@@ -54,6 +54,7 @@ async def handle_link(message: types.Message):
             else:
                 media.append(types.InputMediaPhoto(media=url))
         await bot.send_media_group(chat_id=CHAT_ID, media=media)
+        await message.answer('опубликовано')
     else:
         await bot.send_message(chat_id=CHAT_ID, text=caption.strip(), parse_mode="HTML")
 
