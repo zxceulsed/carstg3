@@ -246,6 +246,9 @@ def parse_single_car(url, max_photos=10):
             photos.append(src)
         if len(photos) >= max_photos:
             break
+            
+    if len(photos) > 1 and photos[-1] == photos[-2]:
+        photos.pop()
 
     # 🛠 Объединяем тип и объём двигателя
     engine_info = "—"
