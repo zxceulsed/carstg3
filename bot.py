@@ -67,7 +67,7 @@ async def set_link_command(message: types.Message):
         return
 
     link = parts[1].strip()
-    set_custom_link(link)
+    await set_custom_link(link)
     await message.answer(f"✅ Ссылка успешно обновлена:\n{link}")
 
 
@@ -91,7 +91,7 @@ async def send_ad():
 
     for attempt in range(MAX_RETRIES):
         try:
-            custom_link = get_custom_link()
+            custom_link = await get_custom_link()
 
             if custom_link:
                 cars = get_random_cars(count=1, base_url=custom_link)
