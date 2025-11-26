@@ -41,9 +41,10 @@ async def ask_link(message: types.Message):
 
 @dp.message(lambda m: m.text.startswith("https://cars.av.by/"))
 async def handle_link(message: types.Message):
-
+    
     car = parse_single_car(message.text)
-
+    print("DEBUG CAR =", car)
+    print("Type =", type(car))
     caption = format_post(car)
 
     if car["photos"]:
