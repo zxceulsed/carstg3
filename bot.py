@@ -43,6 +43,8 @@ async def ask_link(message: types.Message):
 async def handle_link(message: types.Message):
     
     car = parse_single_car(message.text)
+        if car is None:
+            return "error"
     print("DEBUG CAR =", car)
     print("Type =", type(car))
     caption = format_post(car)
