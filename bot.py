@@ -163,7 +163,7 @@ async def main():
         h, m = map(int, t.split(":"))
         scheduler.add_job(send_ad, "cron", hour=h, minute=m, name=f"Рассылка {t}", timezone=moscow_tz)
 
-    init_db()
+    await init_db()
     scheduler.start()
     print("✅ Планировщик запущен по московскому времени")
     await dp.start_polling(bot)
