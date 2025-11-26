@@ -1,61 +1,79 @@
-# db.py
-import sqlite3
+# db.py (асинхронный, безопасный)
+import aiosqlite
+import asyncio
 
 DB_NAME = "cars.db"
 
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS ads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            link TEXT UNIQUE
+# Глобальная блокировка, чтобы не было параллельных записей
+lock = asyncio.Lock()
+
+
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        # WAL — позволяет читать во время записи, уменьшает шанс блокировки
+        await db.execute("PRAGMA journal_mode=WAL;")
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                link TEXT UNIQUE
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                custom_link TEXT
+            )
+        """)
+
+        await db.execute(
+            "INSERT OR IGNORE INTO config (id, custom_link) VALUES (1, NULL)"
         )
-    """)
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS config (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            custom_link TEXT
-        )
-    """)
-
-    # вставляем строку, если её нет
-    cur.execute("INSERT OR IGNORE INTO config (id, custom_link) VALUES (1, NULL)")
-
-def ad_exists(link: str) -> bool:
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM ads WHERE link = ?", (link,))
-    exists = cur.fetchone() is not None
-    conn.close()
-    return exists
-
-def add_ad(link: str):
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    try:
-        cur.execute("INSERT INTO ads (link) VALUES (?)", (link,))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        pass  # уже есть
-    conn.close()
+        await db.commit()
 
 
-# db.py
-def set_custom_link(link: str):
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    # гарантированно заменяет строку, даже если её нет
-    cur.execute("INSERT OR REPLACE INTO config (id, custom_link) VALUES (1, ?)", (link,))
-    conn.commit()
-    conn.close()
+async def ad_exists(link: str) -> bool:
+    async with lock:
+        async with aiosqlite.connect(DB_NAME) as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM ads WHERE link = ?",
+                (link,)
+            )
+            row = await cursor.fetchone()
+            return row is not None
 
 
-def get_custom_link() -> str | None:
-    conn = sqlite3.connect(DB_NAME)
-    cur = conn.cursor()
-    cur.execute("SELECT custom_link FROM config WHERE id = 1")
-    row = cur.fetchone()
-    conn.close()
-    return row[0] if row else None
+async def add_ad(link: str):
+    async with lock:
+        async with aiosqlite.connect(DB_NAME) as db:
+            try:
+                await db.execute(
+                    "INSERT INTO ads (link) VALUES (?)",
+                    (link,)
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                pass  # уже есть
+
+
+async def set_custom_link(link: str):
+    async with lock:
+        async with aiosqlite.connect(DB_NAME) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO config (id, custom_link) VALUES (1, ?)",
+                (link,)
+            )
+            await db.commit()
+
+
+async def get_custom_link() -> str | None:
+    async with lock:
+        async with aiosqlite.connect(DB_NAME) as db:
+            cursor = await db.execute(
+                "SELECT custom_link FROM config WHERE id = 1"
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else None
