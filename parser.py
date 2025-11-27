@@ -1,19 +1,13 @@
-import requests
-from bs4 import BeautifulSoup
-import random
-import re
 from db import ad_exists, add_ad
-
 import requests
 import random
 import re
 from bs4 import BeautifulSoup
-from db import get_custom_link
 
 def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip())
 
-def get_random_cars(
+async def get_random_cars(
     min_price=500,
     max_price=3000,
     count=1,
@@ -51,7 +45,7 @@ def get_random_cars(
 
             title_tag = random_item.find("a", class_="listing-item__link")
             link = "https://cars.av.by" + title_tag["href"] if title_tag else ""
-            if not link or ad_exists(link):
+            if not link or await ad_exists(link):
                 continue
 
             title = title_tag.text.strip() if title_tag else "Без названия"
@@ -135,7 +129,7 @@ def get_random_cars(
                 "message": formatted_message
             })
 
-            add_ad(link)
+            await add_ad(link)
 
         if results:
             return results
@@ -246,9 +240,11 @@ def parse_single_car(url, max_photos=10):
             photos.append(src)
         if len(photos) >= max_photos:
             break
-            
+
+    # ❗️ Удаляем последнее фото, если оно дублирует предпоследнее
     if len(photos) > 1 and photos[-1] == photos[-2]:
         photos.pop()
+
 
     # 🛠 Объединяем тип и объём двигателя
     engine_info = "—"

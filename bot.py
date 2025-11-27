@@ -1,14 +1,12 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from parser import get_random_cars
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timedelta
 from db import init_db,get_custom_link,set_custom_link
 import pytz
 import logging
 from aiogram.exceptions import TelegramBadRequest
-import re
 import requests
 
 
@@ -43,7 +41,7 @@ async def ask_link(message: types.Message):
 
 @dp.message(lambda m: m.text.startswith("https://cars.av.by/"))
 async def handle_link(message: types.Message):
-    
+
     car = parse_single_car(message.text)
     print("DEBUG CAR =", car)
     print("Type =", type(car))
@@ -61,6 +59,16 @@ async def handle_link(message: types.Message):
     else:
         await bot.send_message(chat_id=CHAT_ID, text=caption.strip(), parse_mode="HTML")
 
+@dp.message(Command("ping"))
+async def set_link_command(message: types.Message):
+    try:
+        r = requests.get("https://av.by/", timeout=5)
+        if r.status_code == 200:
+            await message.answer("✅ av.by доступен")
+        else:
+            await message.answer(f"⚠️ Статус: {r.status_code}")
+    except Exception:
+        await message.answer("❌ av.by недоступен")
 
 @dp.message(Command("setlink"))
 async def set_link_command(message: types.Message):
@@ -97,9 +105,9 @@ async def send_ad():
             custom_link = await get_custom_link()
 
             if custom_link:
-                cars = get_random_cars(count=1, base_url=custom_link)
+                cars = await get_random_cars(count=1, base_url=custom_link)
             else:
-                cars = get_random_cars(count=1)
+                cars = await get_random_cars(count=1)
 
             if not cars:
                 print("❌ Не удалось получить объявления")
@@ -149,20 +157,7 @@ async def send_ad():
 
     print("❌ Не удалось отправить объявление после нескольких попыток.")
 
-@dp.message(Command("ping"))
-async def set_link_command(message: types.Message):
-    try:
-        r = requests.get("https://av.by/", timeout=5)
-        if r.status_code == 200:
-            await message.answer("✅ av.by доступен")
-        else:
-            await message.answer(f"⚠️ Статус: {r.status_code}")
-    except Exception:
-        await message.answer("❌ av.by недоступен")
-
 def format_post(car):
-    if car is None:
-        return "error"
     return f"""
 🚗 {car['title']}  📅 {car['year']}
 🛣 {car['mileage']}  |⛽️ {car['engine_info']}
